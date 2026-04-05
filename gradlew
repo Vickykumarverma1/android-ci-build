@@ -10,7 +10,7 @@ if [ ! -f "$PROPERTIES_FILE" ]; then
   exit 1
 fi
 
-DISTRIBUTION_URL=$(grep '^distributionUrl=' "$PROPERTIES_FILE" | cut -d= -f2- | sed 's#\\:##g')
+DISTRIBUTION_URL=$(grep '^distributionUrl=' "$PROPERTIES_FILE" | cut -d= -f2- | sed 's#\\:#:#g')
 
 if [ -z "$DISTRIBUTION_URL" ]; then
   echo "distributionUrl not found in $PROPERTIES_FILE"
