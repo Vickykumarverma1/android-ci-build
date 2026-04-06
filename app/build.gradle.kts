@@ -4,6 +4,20 @@ plugins {
     id("org.jetbrains.kotlin.kapt")
 }
 
+fun env(name: String): String? = System.getenv(name)?.takeIf { it.isNotBlank() }
+
+val ciVersionCode = env("GITHUB_RUN_NUMBER")?.toIntOrNull()
+val signingStoreFile = env("ANDROID_SIGNING_STORE_FILE")
+val signingStorePassword = env("ANDROID_SIGNING_STORE_PASSWORD")
+val signingKeyAlias = env("ANDROID_SIGNING_KEY_ALIAS")
+val signingKeyPassword = env("ANDROID_SIGNING_KEY_PASSWORD")
+val hasReleaseSigning = listOf(
+    signingStoreFile,
+    signingStorePassword,
+    signingKeyAlias,
+    signingKeyPassword
+).all { !it.isNullOrBlank() }
+
 android {
     namespace = "com.habittracker"
     compileSdk = 34
@@ -12,15 +26,29 @@ android {
         applicationId = "com.habittracker"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = ciVersionCode ?: 1
+        versionName = ciVersionCode?.let { "1.0.$it" } ?: "1.0-local"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    signingConfigs {
+        if (hasReleaseSigning) {
+            create("release") {
+                storeFile = file(signingStoreFile!!)
+                storePassword = signingStorePassword
+                keyAlias = signingKeyAlias
+                keyPassword = signingKeyPassword
+            }
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
+            if (hasReleaseSigning) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

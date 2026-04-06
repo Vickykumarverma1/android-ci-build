@@ -6,9 +6,17 @@ on:
     branches:
       - main
 
+concurrency:
+  group: android-apk-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      HAS_RELEASE_SIGNING: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' && secrets.ANDROID_KEYSTORE_PASSWORD != '' && secrets.ANDROID_KEY_ALIAS != '' && secrets.ANDROID_KEY_PASSWORD != '' }}
 
     steps:
       - name: Checkout
@@ -23,11 +31,35 @@ jobs:
       - name: Make Gradle launcher executable
         run: chmod +x gradlew
 
+      - name: Decode release keystore
+        if: env.HAS_RELEASE_SIGNING == 'true'
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/habittracker-release.jks"
+
+      - name: Build signed release APK
+        if: env.HAS_RELEASE_SIGNING == 'true'
+        env:
+          ANDROID_SIGNING_STORE_FILE: ${{ runner.temp }}/habittracker-release.jks
+          ANDROID_SIGNING_STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_SIGNING_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_SIGNING_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: ./gradlew assembleRelease
+
       - name: Build debug APK
+        if: env.HAS_RELEASE_SIGNING != 'true'
         run: ./gradlew assembleDebug
 
-      - name: Upload APK artifact
+      - name: Upload signed release APK
+        if: env.HAS_RELEASE_SIGNING == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: habit-tracker-apk
+          name: habit-tracker-release-apk
+          path: app/build/outputs/apk/release/*.apk
+
+      - name: Upload debug APK
+        if: env.HAS_RELEASE_SIGNING != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: habit-tracker-debug-apk
           path: app/build/outputs/apk/debug/*.apk

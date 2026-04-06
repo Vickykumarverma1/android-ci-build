@@ -36,6 +36,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -63,8 +64,11 @@ import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.LocalTime
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -74,6 +78,8 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 private const val MAX_HABITS = 10
+private val DAY_LOCK_TIME: LocalTime = LocalTime.of(1, 0)
+private val MissedColor = Color(0xFFD45D5D)
 
 private val AppColors = lightColorScheme(
     primary = Color(0xFF2B6E4F),
@@ -221,7 +227,7 @@ class HabitTrackerViewModel(application: Application) : AndroidViewModel(applica
     }
 
     fun toggleHabit(habitId: Int, date: LocalDate) {
-        if (date.isAfter(LocalDate.now())) return
+        if (date != activeTrackingDate(LocalDateTime.now())) return
 
         viewModelScope.launch {
             val existing = dao.findCompletion(habitId, date.toString())
@@ -277,9 +283,15 @@ private fun HabitTrackerScreen(
     onPreviousMonth: () -> Unit,
     onNextMonth: () -> Unit
 ) {
+    val currentDateTime by produceState(initialValue = LocalDateTime.now()) {
+        while (true) {
+            value = LocalDateTime.now()
+            delay(60_000)
+        }
+    }
     val days = remember(state.selectedMonth) { daysInMonth(state.selectedMonth) }
-    val today = LocalDate.now()
-    val todayDoneCount = state.dailyTotals[today] ?: 0
+    val activeTrackingDate = remember(currentDateTime) { activeTrackingDate(currentDateTime) }
+    val todayDoneCount = state.dailyTotals[activeTrackingDate] ?: 0
     var habitName by rememberSaveable { mutableStateOf("") }
 
     Scaffold { paddingValues ->
@@ -295,6 +307,7 @@ private fun HabitTrackerScreen(
                 selectedMonth = state.selectedMonth,
                 todayDoneCount = todayDoneCount,
                 habitCount = state.habitRows.size,
+                activeTrackingDate = activeTrackingDate,
                 onPreviousMonth = onPreviousMonth,
                 onNextMonth = onNextMonth
             )
@@ -312,6 +325,7 @@ private fun HabitTrackerScreen(
             MonthTrackerCard(
                 days = days,
                 habitRows = state.habitRows,
+                activeTrackingDate = activeTrackingDate,
                 onDeleteHabit = onDeleteHabit,
                 onToggleHabit = onToggleHabit
             )
@@ -319,7 +333,8 @@ private fun HabitTrackerScreen(
             ProgressGraphCard(
                 days = days,
                 dailyTotals = state.dailyTotals,
-                todayDoneCount = todayDoneCount
+                todayDoneCount = todayDoneCount,
+                activeTrackingDate = activeTrackingDate
             )
         }
     }
@@ -330,6 +345,7 @@ private fun HeaderCard(
     selectedMonth: YearMonth,
     todayDoneCount: Int,
     habitCount: Int,
+    activeTrackingDate: LocalDate,
     onPreviousMonth: () -> Unit,
     onNextMonth: () -> Unit
 ) {
@@ -350,6 +366,11 @@ private fun HeaderCard(
                 text = "Track up to 10 habits, tick what you completed today, and watch the graph grow automatically.",
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f)
             )
+            Text(
+                text = "Open day: ${activeTrackingDate.format(DateTimeFormatter.ofPattern("dd MMM"))}. After 1:00 AM, unfinished boxes from the previous open day turn red and lock.",
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                fontSize = 13.sp
+            )
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -364,7 +385,7 @@ private fun HeaderCard(
                 MonthButton(label = "Next", onClick = onNextMonth)
             }
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                MetricBadge(title = "Today's ticks", value = "$todayDoneCount / $MAX_HABITS")
+                MetricBadge(title = "Open day ticks", value = "$todayDoneCount / $MAX_HABITS")
                 MetricBadge(title = "Active habits", value = "$habitCount / $MAX_HABITS")
             }
         }
@@ -458,6 +479,7 @@ private fun AddHabitCard(
 private fun MonthTrackerCard(
     days: List<LocalDate>,
     habitRows: List<HabitRowUi>,
+    activeTrackingDate: LocalDate,
     onDeleteHabit: (Int) -> Unit,
     onToggleHabit: (Int, LocalDate) -> Unit
 ) {
@@ -483,37 +505,65 @@ private fun MonthTrackerCard(
             } else {
                 val horizontalState = rememberScrollState()
                 val cellSize = 38.dp
+                val labelColumnWidth = 132.dp
+                val headerHeight = 42.dp
+                val rowHeight = 76.dp
+                val gridWidth = cellSize * days.size
 
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = "Habit",
-                        modifier = Modifier.width(132.dp),
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Row(modifier = Modifier.horizontalScroll(horizontalState)) {
-                        days.forEach { day ->
-                            DayHeaderCell(day = day, cellSize = cellSize)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.Top
+                ) {
+                    Column(modifier = Modifier.width(labelColumnWidth)) {
+                        Box(
+                            modifier = Modifier.height(headerHeight),
+                            contentAlignment = Alignment.CenterStart
+                        ) {
+                            Text(
+                                text = "Habit",
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+
+                        habitRows.forEach { habit ->
+                            HabitNameCell(
+                                name = habit.name,
+                                rowHeight = rowHeight,
+                                onDelete = { onDeleteHabit(habit.id) }
+                            )
                         }
                     }
-                }
 
-                habitRows.forEach { habit ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .horizontalScroll(horizontalState)
                     ) {
-                        HabitNameCell(
-                            name = habit.name,
-                            onDelete = { onDeleteHabit(habit.id) }
-                        )
-                        Row(modifier = Modifier.horizontalScroll(horizontalState)) {
-                            days.forEach { day ->
-                                TrackerDayCell(
-                                    cellSize = cellSize,
-                                    isDone = habit.completedDates.contains(day),
-                                    isFuture = day.isAfter(LocalDate.now()),
-                                    onClick = { onToggleHabit(habit.id, day) }
-                                )
+                        Column(modifier = Modifier.width(gridWidth)) {
+                            Row(
+                                modifier = Modifier.height(headerHeight),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                days.forEach { day ->
+                                    DayHeaderCell(day = day, cellSize = cellSize)
+                                }
+                            }
+
+                            habitRows.forEach { habit ->
+                                Row(
+                                    modifier = Modifier.height(rowHeight),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    days.forEach { day ->
+                                        TrackerDayCell(
+                                            cellSize = cellSize,
+                                            isDone = habit.completedDates.contains(day),
+                                            isLocked = day.isBefore(activeTrackingDate),
+                                            isFuture = day.isAfter(activeTrackingDate),
+                                            onClick = { onToggleHabit(habit.id, day) }
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -524,18 +574,20 @@ private fun MonthTrackerCard(
 }
 
 @Composable
-private fun HabitNameCell(name: String, onDelete: () -> Unit) {
+private fun HabitNameCell(name: String, rowHeight: Dp, onDelete: () -> Unit) {
     Column(
         modifier = Modifier
             .width(132.dp)
+            .height(rowHeight)
             .padding(end = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp)
+        verticalArrangement = Arrangement.Center
     ) {
         Text(
             text = name,
             fontWeight = FontWeight.Medium,
             maxLines = 2
         )
+        Spacer(modifier = Modifier.height(6.dp))
         TextButton(
             onClick = onDelete,
             contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
@@ -569,17 +621,20 @@ private fun DayHeaderCell(day: LocalDate, cellSize: Dp) {
 private fun TrackerDayCell(
     cellSize: Dp,
     isDone: Boolean,
+    isLocked: Boolean,
     isFuture: Boolean,
     onClick: () -> Unit
 ) {
     val background = when {
         isDone -> MaterialTheme.colorScheme.primary
+        isLocked -> MissedColor.copy(alpha = 0.18f)
         isFuture -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
         else -> Color.Transparent
     }
 
     val contentColor = when {
         isDone -> MaterialTheme.colorScheme.onPrimary
+        isLocked -> MissedColor
         else -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f)
     }
 
@@ -591,14 +646,22 @@ private fun TrackerDayCell(
             .background(background)
             .border(
                 width = 1.dp,
-                color = if (isDone) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline.copy(alpha = 0.6f),
+                color = when {
+                    isDone -> MaterialTheme.colorScheme.primary
+                    isLocked -> MissedColor
+                    else -> MaterialTheme.colorScheme.outline.copy(alpha = 0.6f)
+                },
                 shape = RoundedCornerShape(12.dp)
             )
-            .clickable(enabled = !isFuture, onClick = onClick),
+            .clickable(enabled = !isFuture && !isLocked, onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
         Text(
-            text = if (isDone) "✓" else "",
+            text = when {
+                isDone -> "✓"
+                isLocked -> "✕"
+                else -> ""
+            },
             fontWeight = FontWeight.Bold,
             color = contentColor
         )
@@ -609,7 +672,8 @@ private fun TrackerDayCell(
 private fun ProgressGraphCard(
     days: List<LocalDate>,
     dailyTotals: Map<LocalDate, Int>,
-    todayDoneCount: Int
+    todayDoneCount: Int,
+    activeTrackingDate: LocalDate
 ) {
     Card(
         shape = RoundedCornerShape(24.dp),
@@ -625,20 +689,30 @@ private fun ProgressGraphCard(
                 fontWeight = FontWeight.SemiBold
             )
             Text(
-                text = "The graph always reads from 0 to 10. If today has 5 ticks, today's progress shows as 5.",
+                text = "The graph always reads from 0 to 10. Red boxes mean that day locked after 1:00 AM without a tick.",
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f)
             )
-            MetricBadge(title = "Today", value = "$todayDoneCount / $MAX_HABITS")
-            DailyProgressGraph(days = days, dailyTotals = dailyTotals)
+            MetricBadge(
+                title = "Open day",
+                value = "${activeTrackingDate.format(DateTimeFormatter.ofPattern("dd MMM"))}  $todayDoneCount / $MAX_HABITS"
+            )
+            DailyProgressGraph(
+                days = days,
+                dailyTotals = dailyTotals,
+                activeTrackingDate = activeTrackingDate
+            )
         }
     }
 }
 
 @Composable
-private fun DailyProgressGraph(days: List<LocalDate>, dailyTotals: Map<LocalDate, Int>) {
-    val today = LocalDate.now()
+private fun DailyProgressGraph(
+    days: List<LocalDate>,
+    dailyTotals: Map<LocalDate, Int>,
+    activeTrackingDate: LocalDate
+) {
     val chartHeight = 180.dp
-    val plottedDays = remember(days) { days.filter { !it.isAfter(today) } }
+    val plottedDays = remember(days, activeTrackingDate) { days.filter { !it.isAfter(activeTrackingDate) } }
 
     if (plottedDays.isEmpty()) {
         Text(
@@ -718,4 +792,12 @@ private fun DayProgressBar(day: LocalDate, value: Int, chartHeight: Dp) {
 
 private fun daysInMonth(month: YearMonth): List<LocalDate> {
     return (1..month.lengthOfMonth()).map(month::atDay)
+}
+
+private fun activeTrackingDate(now: LocalDateTime): LocalDate {
+    return if (now.toLocalTime().isBefore(DAY_LOCK_TIME)) {
+        now.toLocalDate().minusDays(1)
+    } else {
+        now.toLocalDate()
+    }
 }
