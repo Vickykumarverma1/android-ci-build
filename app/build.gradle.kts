@@ -4,7 +4,7 @@ plugins {
     id("org.jetbrains.kotlin.kapt")
 }
 
-fun env(name: String): String? = System.getenv(name)?.takeIf { it.isNotBlank() }
+fun env(name: String): String? = System.getenv(name)?.trim()?.takeIf { it.isNotBlank() }
 
 val ciVersionCode = env("GITHUB_RUN_NUMBER")?.toIntOrNull()
 val signingStoreFile = env("ANDROID_SIGNING_STORE_FILE")
