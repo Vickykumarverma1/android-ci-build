@@ -35,7 +35,7 @@ jobs:
         if: env.HAS_RELEASE_SIGNING == 'true'
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-        run: echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/habittracker-release.jks"
+        run: printf '%s' "$ANDROID_KEYSTORE_BASE64" | tr -d '\r\n\t ' | base64 --decode > "$RUNNER_TEMP/habittracker-release.jks"
 
       - name: Build signed release APK
         if: env.HAS_RELEASE_SIGNING == 'true'
