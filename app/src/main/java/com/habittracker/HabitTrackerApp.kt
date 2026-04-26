@@ -29,10 +29,13 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -47,6 +50,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -336,6 +340,8 @@ private fun HabitTrackerScreen(
                 todayDoneCount = todayDoneCount,
                 activeTrackingDate = activeTrackingDate
             )
+
+            ReminderSettingsCard()
         }
     }
 }
@@ -509,6 +515,18 @@ private fun MonthTrackerCard(
                 val headerHeight = 42.dp
                 val rowHeight = 76.dp
                 val gridWidth = cellSize * days.size
+                val density = LocalDensity.current
+
+                // Auto-scroll to the active tracking date
+                LaunchedEffect(activeTrackingDate, days) {
+                    val dayIndex = days.indexOfFirst { it == activeTrackingDate }
+                    if (dayIndex > 0) {
+                        val cellPx = with(density) { cellSize.toPx() }
+                        // Scroll so the active date is roughly centered
+                        val targetScroll = (dayIndex * cellPx - cellPx * 2).toInt().coerceAtLeast(0)
+                        horizontalState.scrollTo(targetScroll)
+                    }
+                }
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -575,6 +593,31 @@ private fun MonthTrackerCard(
 
 @Composable
 private fun HabitNameCell(name: String, rowHeight: Dp, onDelete: () -> Unit) {
+    var showConfirmDialog by remember { mutableStateOf(false) }
+
+    if (showConfirmDialog) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showConfirmDialog = false },
+            title = { Text("Remove Habit") },
+            text = {
+                Text("Are you sure you want to remove \"$name\"? All its tracking data will be deleted.")
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showConfirmDialog = false
+                    onDelete()
+                }) {
+                    Text("Remove", color = MissedColor)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showConfirmDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
     Column(
         modifier = Modifier
             .width(132.dp)
@@ -589,7 +632,7 @@ private fun HabitNameCell(name: String, rowHeight: Dp, onDelete: () -> Unit) {
         )
         Spacer(modifier = Modifier.height(6.dp))
         TextButton(
-            onClick = onDelete,
+            onClick = { showConfirmDialog = true },
             contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
         ) {
             Text("Remove")
@@ -787,6 +830,146 @@ private fun DayProgressBar(day: LocalDate, value: Int, chartHeight: Dp) {
             fontSize = 10.sp,
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f)
         )
+    }
+}
+
+@Composable
+private fun ReminderSettingsCard() {
+    val context = LocalContext.current
+    val prefs = remember {
+        context.getSharedPreferences("habit_prefs", Context.MODE_PRIVATE)
+    }
+
+    var reminderEnabled by remember {
+        mutableStateOf(prefs.getBoolean("reminder_enabled", false))
+    }
+    var reminderHour by remember {
+        mutableStateOf(prefs.getInt("reminder_hour", 20))
+    }
+    var reminderMinute by remember {
+        mutableStateOf(prefs.getInt("reminder_minute", 0))
+    }
+
+    fun saveAndSchedule() {
+        prefs.edit()
+            .putBoolean("reminder_enabled", reminderEnabled)
+            .putInt("reminder_hour", reminderHour)
+            .putInt("reminder_minute", reminderMinute)
+            .apply()
+        if (reminderEnabled) {
+            HabitReminderReceiver.schedule(context, reminderHour, reminderMinute)
+        } else {
+            HabitReminderReceiver.cancel(context)
+        }
+    }
+
+    Card(
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Column(
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Text(
+                text = "Daily Reminder",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                text = "Get a daily notification to remind you to complete your habits.",
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f)
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Enable reminder",
+                    fontWeight = FontWeight.Medium
+                )
+                Switch(
+                    checked = reminderEnabled,
+                    onCheckedChange = {
+                        reminderEnabled = it
+                        saveAndSchedule()
+                    },
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
+                        checkedTrackColor = MaterialTheme.colorScheme.primary
+                    )
+                )
+            }
+
+            if (reminderEnabled) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Time:",
+                        fontWeight = FontWeight.Medium
+                    )
+
+                    // Hour picker
+                    Surface(
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            TextButton(onClick = {
+                                reminderHour = if (reminderHour <= 0) 23 else reminderHour - 1
+                                saveAndSchedule()
+                            }) { Text("\u2212") }
+                            Text(
+                                text = "%02d".format(reminderHour),
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.widthIn(min = 28.dp),
+                                textAlign = TextAlign.Center
+                            )
+                            TextButton(onClick = {
+                                reminderHour = if (reminderHour >= 23) 0 else reminderHour + 1
+                                saveAndSchedule()
+                            }) { Text("+") }
+                        }
+                    }
+
+                    Text(":", fontWeight = FontWeight.Bold)
+
+                    // Minute picker
+                    Surface(
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            TextButton(onClick = {
+                                reminderMinute = if (reminderMinute <= 0) 55 else reminderMinute - 5
+                                saveAndSchedule()
+                            }) { Text("\u2212") }
+                            Text(
+                                text = "%02d".format(reminderMinute),
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.widthIn(min = 28.dp),
+                                textAlign = TextAlign.Center
+                            )
+                            TextButton(onClick = {
+                                reminderMinute = if (reminderMinute >= 55) 0 else reminderMinute + 5
+                                saveAndSchedule()
+                            }) { Text("+") }
+                        }
+                    }
+                }
+
+                Text(
+                    text = "You\u2019ll receive a reminder at %02d:%02d every day.".format(reminderHour, reminderMinute),
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                    fontSize = 13.sp
+                )
+            }
+        }
     }
 }
 
