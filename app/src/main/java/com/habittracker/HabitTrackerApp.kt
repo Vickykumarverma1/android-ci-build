@@ -338,7 +338,8 @@ private fun HabitTrackerScreen(
                 days = days,
                 dailyTotals = state.dailyTotals,
                 todayDoneCount = todayDoneCount,
-                activeTrackingDate = activeTrackingDate
+                activeTrackingDate = activeTrackingDate,
+                habitCount = state.habitRows.size
             )
 
             ReminderSettingsCard()
@@ -716,7 +717,8 @@ private fun ProgressGraphCard(
     days: List<LocalDate>,
     dailyTotals: Map<LocalDate, Int>,
     todayDoneCount: Int,
-    activeTrackingDate: LocalDate
+    activeTrackingDate: LocalDate,
+    habitCount: Int
 ) {
     Card(
         shape = RoundedCornerShape(24.dp),
@@ -732,17 +734,18 @@ private fun ProgressGraphCard(
                 fontWeight = FontWeight.SemiBold
             )
             Text(
-                text = "The graph always reads from 0 to 10. Red boxes mean that day locked after 1:00 AM without a tick.",
+                text = "The graph always reads from 0 to 10. Tap any bar to see details.",
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f)
             )
             MetricBadge(
                 title = "Open day",
-                value = "${activeTrackingDate.format(DateTimeFormatter.ofPattern("dd MMM"))}  $todayDoneCount / $MAX_HABITS"
+                value = "${activeTrackingDate.format(DateTimeFormatter.ofPattern("dd MMM"))}  $todayDoneCount / $habitCount"
             )
             DailyProgressGraph(
                 days = days,
                 dailyTotals = dailyTotals,
-                activeTrackingDate = activeTrackingDate
+                activeTrackingDate = activeTrackingDate,
+                habitCount = habitCount
             )
         }
     }
@@ -752,7 +755,8 @@ private fun ProgressGraphCard(
 private fun DailyProgressGraph(
     days: List<LocalDate>,
     dailyTotals: Map<LocalDate, Int>,
-    activeTrackingDate: LocalDate
+    activeTrackingDate: LocalDate,
+    habitCount: Int
 ) {
     val chartHeight = 180.dp
     val plottedDays = remember(days, activeTrackingDate) { days.filter { !it.isAfter(activeTrackingDate) } }
@@ -763,6 +767,19 @@ private fun DailyProgressGraph(
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
         )
         return
+    }
+
+    val graphScrollState = rememberScrollState()
+    val density = LocalDensity.current
+    val barWidthWithSpacing = with(density) { (18.dp + 8.dp).toPx() }
+
+    // Auto-scroll to active tracking date
+    LaunchedEffect(activeTrackingDate, plottedDays) {
+        val dayIndex = plottedDays.indexOfFirst { it == activeTrackingDate }
+        if (dayIndex > 0) {
+            val targetScroll = (dayIndex * barWidthWithSpacing - barWidthWithSpacing * 2).toInt().coerceAtLeast(0)
+            graphScrollState.scrollTo(targetScroll)
+        }
     }
 
     Row(
@@ -784,7 +801,7 @@ private fun DailyProgressGraph(
         Row(
             modifier = Modifier
                 .weight(1f)
-                .horizontalScroll(rememberScrollState()),
+                .horizontalScroll(graphScrollState),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.Bottom
         ) {
@@ -793,7 +810,8 @@ private fun DailyProgressGraph(
                 DayProgressBar(
                     day = day,
                     value = value,
-                    chartHeight = chartHeight
+                    chartHeight = chartHeight,
+                    habitCount = habitCount
                 )
             }
         }
@@ -801,13 +819,47 @@ private fun DailyProgressGraph(
 }
 
 @Composable
-private fun DayProgressBar(day: LocalDate, value: Int, chartHeight: Dp) {
+private fun DayProgressBar(day: LocalDate, value: Int, chartHeight: Dp, habitCount: Int) {
+    var showDetail by remember { mutableStateOf(false) }
+
+    if (showDetail) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showDetail = false },
+            title = {
+                Text(day.format(DateTimeFormatter.ofPattern("dd MMM, EEEE")))
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "$value / $habitCount habits completed",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp
+                    )
+                    if (habitCount > 0) {
+                        val percent = (value * 100) / habitCount
+                        Text(
+                            text = "$percent% completion rate",
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showDetail = false }) {
+                    Text("OK")
+                }
+            }
+        )
+    }
+
     val barHeight = remember(value) {
         ((value.coerceIn(0, MAX_HABITS) / MAX_HABITS.toFloat()) * 120f).dp
     }
 
     Column(
-        modifier = Modifier.widthIn(min = 18.dp),
+        modifier = Modifier
+            .widthIn(min = 18.dp)
+            .clickable { showDetail = true },
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Bottom
     ) {
