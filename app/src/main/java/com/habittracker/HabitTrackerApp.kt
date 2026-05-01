@@ -759,9 +759,7 @@ private fun DailyProgressGraph(
     habitCount: Int
 ) {
     val chartHeight = 220.dp
-    val allPlottedDays = remember(days, activeTrackingDate) { days.filter { !it.isAfter(activeTrackingDate) } }
-    // Show only the last 5 days
-    val plottedDays = remember(allPlottedDays) { allPlottedDays.takeLast(5) }
+    val plottedDays = remember(days, activeTrackingDate) { days.filter { !it.isAfter(activeTrackingDate) } }
 
     if (plottedDays.isEmpty()) {
         Text(
@@ -769,6 +767,19 @@ private fun DailyProgressGraph(
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
         )
         return
+    }
+
+    val graphScrollState = rememberScrollState()
+    val density = LocalDensity.current
+    val barWidthWithSpacing = with(density) { (48.dp + 12.dp).toPx() }
+
+    // Auto-scroll to active tracking date
+    LaunchedEffect(activeTrackingDate, plottedDays) {
+        val dayIndex = plottedDays.indexOfFirst { it == activeTrackingDate }
+        if (dayIndex > 0) {
+            val targetScroll = (dayIndex * barWidthWithSpacing - barWidthWithSpacing * 2).toInt().coerceAtLeast(0)
+            graphScrollState.scrollTo(targetScroll)
+        }
     }
 
     Row(
@@ -788,8 +799,10 @@ private fun DailyProgressGraph(
         Spacer(modifier = Modifier.width(10.dp))
 
         Row(
-            modifier = Modifier.weight(1f),
-            horizontalArrangement = Arrangement.SpaceEvenly,
+            modifier = Modifier
+                .weight(1f)
+                .horizontalScroll(graphScrollState),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.Bottom
         ) {
             plottedDays.forEach { day ->
