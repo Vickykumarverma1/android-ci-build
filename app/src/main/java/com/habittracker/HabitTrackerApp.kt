@@ -734,7 +734,7 @@ private fun ProgressGraphCard(
                 fontWeight = FontWeight.SemiBold
             )
             Text(
-                text = "The graph always reads from 0 to 10. Tap any bar to see details.",
+                text = "Shows your last 5 days of progress. Each bar displays your completed habit count.",
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f)
             )
             MetricBadge(
@@ -758,8 +758,10 @@ private fun DailyProgressGraph(
     activeTrackingDate: LocalDate,
     habitCount: Int
 ) {
-    val chartHeight = 180.dp
-    val plottedDays = remember(days, activeTrackingDate) { days.filter { !it.isAfter(activeTrackingDate) } }
+    val chartHeight = 220.dp
+    val allPlottedDays = remember(days, activeTrackingDate) { days.filter { !it.isAfter(activeTrackingDate) } }
+    // Show only the last 5 days
+    val plottedDays = remember(allPlottedDays) { allPlottedDays.takeLast(5) }
 
     if (plottedDays.isEmpty()) {
         Text(
@@ -767,19 +769,6 @@ private fun DailyProgressGraph(
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
         )
         return
-    }
-
-    val graphScrollState = rememberScrollState()
-    val density = LocalDensity.current
-    val barWidthWithSpacing = with(density) { (18.dp + 8.dp).toPx() }
-
-    // Auto-scroll to active tracking date
-    LaunchedEffect(activeTrackingDate, plottedDays) {
-        val dayIndex = plottedDays.indexOfFirst { it == activeTrackingDate }
-        if (dayIndex > 0) {
-            val targetScroll = (dayIndex * barWidthWithSpacing - barWidthWithSpacing * 2).toInt().coerceAtLeast(0)
-            graphScrollState.scrollTo(targetScroll)
-        }
     }
 
     Row(
@@ -799,10 +788,8 @@ private fun DailyProgressGraph(
         Spacer(modifier = Modifier.width(10.dp))
 
         Row(
-            modifier = Modifier
-                .weight(1f)
-                .horizontalScroll(graphScrollState),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.weight(1f),
+            horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.Bottom
         ) {
             plottedDays.forEach { day ->
@@ -820,67 +807,56 @@ private fun DailyProgressGraph(
 
 @Composable
 private fun DayProgressBar(day: LocalDate, value: Int, chartHeight: Dp, habitCount: Int) {
-    var showDetail by remember { mutableStateOf(false) }
-
-    if (showDetail) {
-        androidx.compose.material3.AlertDialog(
-            onDismissRequest = { showDetail = false },
-            title = {
-                Text(day.format(DateTimeFormatter.ofPattern("dd MMM, EEEE")))
-            },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        text = "$value / $habitCount habits completed",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 18.sp
-                    )
-                    if (habitCount > 0) {
-                        val percent = (value * 100) / habitCount
-                        Text(
-                            text = "$percent% completion rate",
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                        )
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { showDetail = false }) {
-                    Text("OK")
-                }
-            }
-        )
-    }
-
     val barHeight = remember(value) {
-        ((value.coerceIn(0, MAX_HABITS) / MAX_HABITS.toFloat()) * 120f).dp
+        val minBarHeight = 32f // minimum height so the count label is always visible
+        ((value.coerceIn(0, MAX_HABITS) / MAX_HABITS.toFloat()) * 160f).dp.coerceAtLeast(minBarHeight.dp)
     }
+
+    val isToday = day == activeTrackingDate(LocalDateTime.now())
 
     Column(
-        modifier = Modifier
-            .widthIn(min = 18.dp)
-            .clickable { showDetail = true },
+        modifier = Modifier.widthIn(min = 48.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Bottom
     ) {
         Box(
-            modifier = Modifier.height(chartHeight - 24.dp),
+            modifier = Modifier.height(chartHeight - 40.dp),
             contentAlignment = Alignment.BottomCenter
         ) {
             Box(
                 modifier = Modifier
-                    .width(16.dp)
+                    .width(40.dp)
                     .height(barHeight)
-                    .clip(RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp))
+                    .clip(RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp))
                     .background(
-                        if (value > 0) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.surfaceVariant
-                    )
-            )
+                        if (isToday) MaterialTheme.colorScheme.primary
+                        else if (value > 0) MaterialTheme.colorScheme.secondary
+                        else MaterialTheme.colorScheme.surfaceVariant
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "$value",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp,
+                    color = if (isToday) MaterialTheme.colorScheme.onPrimary
+                            else if (value > 0) MaterialTheme.colorScheme.onSurface
+                            else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                )
+            }
         }
+        Spacer(modifier = Modifier.height(4.dp))
         Text(
             text = day.dayOfMonth.toString(),
+            fontSize = 12.sp,
+            fontWeight = if (isToday) FontWeight.Bold else FontWeight.Normal,
+            color = if (isToday) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f)
+        )
+        Text(
+            text = day.dayOfWeek.name.take(3),
             fontSize = 10.sp,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f)
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
         )
     }
 }
