@@ -884,21 +884,13 @@ private fun ReminderSettingsCard() {
     var reminderEnabled by remember {
         mutableStateOf(prefs.getBoolean("reminder_enabled", false))
     }
-    var reminderHour by remember {
-        mutableStateOf(prefs.getInt("reminder_hour", 20))
-    }
-    var reminderMinute by remember {
-        mutableStateOf(prefs.getInt("reminder_minute", 0))
-    }
 
     fun saveAndSchedule() {
         prefs.edit()
             .putBoolean("reminder_enabled", reminderEnabled)
-            .putInt("reminder_hour", reminderHour)
-            .putInt("reminder_minute", reminderMinute)
             .apply()
         if (reminderEnabled) {
-            HabitReminderReceiver.schedule(context, reminderHour, reminderMinute)
+            HabitReminderReceiver.schedule(context)
         } else {
             HabitReminderReceiver.cancel(context)
         }
@@ -913,12 +905,12 @@ private fun ReminderSettingsCard() {
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             Text(
-                text = "Daily Reminder",
+                text = "Auto Reminders",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold
             )
             Text(
-                text = "Get a daily notification to remind you to complete your habits.",
+                text = "Get reminded every 2.5 hours from 6:00 AM to 11:00 PM to complete your habits.",
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f)
             )
 
@@ -928,7 +920,7 @@ private fun ReminderSettingsCard() {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Enable reminder",
+                    text = "Enable reminders",
                     fontWeight = FontWeight.Medium
                 )
                 Switch(
@@ -945,67 +937,14 @@ private fun ReminderSettingsCard() {
             }
 
             if (reminderEnabled) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Time:",
-                        fontWeight = FontWeight.Medium
-                    )
-
-                    // Hour picker
-                    Surface(
-                        color = MaterialTheme.colorScheme.surfaceVariant,
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            TextButton(onClick = {
-                                reminderHour = if (reminderHour <= 0) 23 else reminderHour - 1
-                                saveAndSchedule()
-                            }) { Text("\u2212") }
-                            Text(
-                                text = "%02d".format(reminderHour),
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.widthIn(min = 28.dp),
-                                textAlign = TextAlign.Center
-                            )
-                            TextButton(onClick = {
-                                reminderHour = if (reminderHour >= 23) 0 else reminderHour + 1
-                                saveAndSchedule()
-                            }) { Text("+") }
-                        }
-                    }
-
-                    Text(":", fontWeight = FontWeight.Bold)
-
-                    // Minute picker
-                    Surface(
-                        color = MaterialTheme.colorScheme.surfaceVariant,
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            TextButton(onClick = {
-                                reminderMinute = if (reminderMinute <= 0) 55 else reminderMinute - 5
-                                saveAndSchedule()
-                            }) { Text("\u2212") }
-                            Text(
-                                text = "%02d".format(reminderMinute),
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.widthIn(min = 28.dp),
-                                textAlign = TextAlign.Center
-                            )
-                            TextButton(onClick = {
-                                reminderMinute = if (reminderMinute >= 55) 0 else reminderMinute + 5
-                                saveAndSchedule()
-                            }) { Text("+") }
-                        }
-                    }
-                }
-
                 Text(
-                    text = "You\u2019ll receive a reminder at %02d:%02d every day.".format(reminderHour, reminderMinute),
+                    text = "Schedule: 6:00 \u2022 8:30 \u2022 11:00 \u2022 13:30 \u2022 16:00 \u2022 18:30 \u2022 21:00 \u2022 23:00",
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 13.sp
+                )
+                Text(
+                    text = "You\u2019ll receive 8 reminders throughout the day, automatically.",
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
                     fontSize = 13.sp
                 )
