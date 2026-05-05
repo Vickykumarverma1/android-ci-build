@@ -81,7 +81,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
-private const val MAX_HABITS = 10
+
 private val DAY_LOCK_TIME: LocalTime = LocalTime.of(1, 0)
 private val MissedColor = Color(0xFFD45D5D)
 
@@ -172,7 +172,7 @@ data class HabitTrackerUiState(
     val selectedMonth: YearMonth = YearMonth.now(),
     val habitRows: List<HabitRowUi> = emptyList(),
     val dailyTotals: Map<LocalDate, Int> = emptyMap(),
-    val canAddMore: Boolean = true
+
 )
 
 class HabitTrackerViewModel(application: Application) : AndroidViewModel(application) {
@@ -204,8 +204,7 @@ class HabitTrackerViewModel(application: Application) : AndroidViewModel(applica
                     completedDates = completionsByHabit[habit.id].orEmpty()
                 )
             },
-            dailyTotals = dailyTotals,
-            canAddMore = habits.size < MAX_HABITS
+            dailyTotals = dailyTotals
         )
     }.stateIn(
         scope = viewModelScope,
@@ -218,7 +217,6 @@ class HabitTrackerViewModel(application: Application) : AndroidViewModel(applica
         if (cleanedName.isBlank()) return
 
         viewModelScope.launch {
-            if (dao.getHabitCount() >= MAX_HABITS) return@launch
             dao.insertHabit(HabitEntity(name = cleanedName))
         }
     }
@@ -322,8 +320,7 @@ private fun HabitTrackerScreen(
                 onAddHabit = {
                     onAddHabit(habitName)
                     habitName = ""
-                },
-                canAddMore = state.canAddMore
+                }
             )
 
             MonthTrackerCard(
@@ -370,7 +367,7 @@ private fun HeaderCard(
                 fontWeight = FontWeight.Bold
             )
             Text(
-                text = "Track up to 10 habits, tick what you completed today, and watch the graph grow automatically.",
+                text = "Track your habits, tick what you completed today, and watch the graph grow automatically.",
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f)
             )
             Text(
@@ -392,8 +389,8 @@ private fun HeaderCard(
                 MonthButton(label = "Next", onClick = onNextMonth)
             }
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                MetricBadge(title = "Open day ticks", value = "$todayDoneCount / $MAX_HABITS")
-                MetricBadge(title = "Active habits", value = "$habitCount / $MAX_HABITS")
+                MetricBadge(title = "Open day ticks", value = "$todayDoneCount / $habitCount")
+                MetricBadge(title = "Active habits", value = "$habitCount")
             }
         }
     }
@@ -434,8 +431,7 @@ private fun MetricBadge(title: String, value: String) {
 private fun AddHabitCard(
     habitName: String,
     onHabitNameChange: (String) -> Unit,
-    onAddHabit: () -> Unit,
-    canAddMore: Boolean
+    onAddHabit: () -> Unit
 ) {
     Card(
         shape = RoundedCornerShape(24.dp),
@@ -454,7 +450,6 @@ private fun AddHabitCard(
                 value = habitName,
                 onValueChange = onHabitNameChange,
                 modifier = Modifier.fillMaxWidth(),
-                enabled = canAddMore,
                 singleLine = true,
                 label = { Text("Habit name") },
                 placeholder = { Text("Reading, workout, water...") }
@@ -465,16 +460,12 @@ private fun AddHabitCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = if (canAddMore) {
-                        "You can save up to 10 habits."
-                    } else {
-                        "Habit limit reached. Remove one to add another."
-                    },
+                    text = "Add as many habits as you want.",
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
                     modifier = Modifier.weight(1f)
                 )
                 Spacer(modifier = Modifier.width(12.dp))
-                Button(onClick = onAddHabit, enabled = canAddMore && habitName.isNotBlank()) {
+                Button(onClick = onAddHabit, enabled = habitName.isNotBlank()) {
                     Text("Save")
                 }
             }
@@ -791,8 +782,10 @@ private fun DailyProgressGraph(
             verticalArrangement = Arrangement.SpaceBetween,
             horizontalAlignment = Alignment.End
         ) {
-            Text("10", color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
-            Text("5", color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+            val maxLabel = habitCount.coerceAtLeast(1)
+            val midLabel = maxLabel / 2
+            Text("$maxLabel", color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+            Text("$midLabel", color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
             Text("0", color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
         }
 
@@ -820,9 +813,10 @@ private fun DailyProgressGraph(
 
 @Composable
 private fun DayProgressBar(day: LocalDate, value: Int, chartHeight: Dp, habitCount: Int) {
-    val barHeight = remember(value) {
+    val maxValue = habitCount.coerceAtLeast(1)
+    val barHeight = remember(value, maxValue) {
         val minBarHeight = 32f // minimum height so the count label is always visible
-        ((value.coerceIn(0, MAX_HABITS) / MAX_HABITS.toFloat()) * 160f).dp.coerceAtLeast(minBarHeight.dp)
+        ((value.coerceIn(0, maxValue) / maxValue.toFloat()) * 160f).dp.coerceAtLeast(minBarHeight.dp)
     }
 
     val isToday = day == activeTrackingDate(LocalDateTime.now())
