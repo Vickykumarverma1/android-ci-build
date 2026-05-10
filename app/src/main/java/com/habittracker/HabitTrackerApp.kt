@@ -736,13 +736,8 @@ private fun TrackerDayCell(
     onClick: () -> Unit,
     onLongPress: () -> Unit = {}
 ) {
-    // Editable past days get a distinct visual style
-    val EditableColor = Color(0xFF3B82F6) // blue accent for editable past days
-
     val background = when {
-        isDone && isEditable -> MaterialTheme.colorScheme.primary
         isDone -> MaterialTheme.colorScheme.primary
-        isEditable && isLocked -> EditableColor.copy(alpha = 0.12f)
         isLocked -> MissedColor.copy(alpha = 0.18f)
         isFuture -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
         else -> Color.Transparent
@@ -750,17 +745,8 @@ private fun TrackerDayCell(
 
     val contentColor = when {
         isDone -> MaterialTheme.colorScheme.onPrimary
-        isEditable && isLocked -> EditableColor
         isLocked -> MissedColor
         else -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f)
-    }
-
-    val borderColor = when {
-        isDone && isEditable -> EditableColor
-        isDone -> MaterialTheme.colorScheme.primary
-        isEditable -> EditableColor.copy(alpha = 0.5f)
-        isLocked -> MissedColor
-        else -> MaterialTheme.colorScheme.outline.copy(alpha = 0.6f)
     }
 
     Box(
@@ -770,15 +756,18 @@ private fun TrackerDayCell(
             .clip(RoundedCornerShape(12.dp))
             .background(background)
             .border(
-                width = if (isEditable) 1.5.dp else 1.dp,
-                color = borderColor,
+                width = 1.dp,
+                color = when {
+                    isDone -> MaterialTheme.colorScheme.primary
+                    isLocked -> MissedColor
+                    else -> MaterialTheme.colorScheme.outline.copy(alpha = 0.6f)
+                },
                 shape = RoundedCornerShape(12.dp)
             )
             .combinedClickable(
                 enabled = !isFuture && (!isLocked || isEditable),
                 onClick = {
                     if (!isLocked) onClick()
-                    // Normal click on editable locked cells does nothing — must long-press
                 },
                 onLongClick = {
                     if (isEditable) onLongPress()
@@ -789,7 +778,6 @@ private fun TrackerDayCell(
         Text(
             text = when {
                 isDone -> "✓"
-                isEditable && isLocked -> "·" // middle dot to hint it's editable
                 isLocked -> "✕"
                 else -> ""
             },
